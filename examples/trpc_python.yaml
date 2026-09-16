@@ -1,0 +1,50 @@
+# tRPC configuration for A2A example
+global:  # Global configuration
+  namespace: Development  # Environment type: production or development
+  env_name: test  # Environment name for non-production environments
+
+server:  # Server configuration
+  app: test  # Application name
+  server: a2a_example  # Server name
+  worker_num: 1  # Number of worker processes
+  # Service configuration
+  service:
+    # A2A service configuration
+    - name: trpc.a2a_test.test_a2a_agent
+      protocol: a2a  # Key identifier for A2A protocol
+      ip: 127.0.0.1  # Service listening IP
+      port: 18080  # Service listening port
+      network: tcp
+      # redis_name: trpc.redis.test_example
+# client:                                            #客户端调用的后端配置
+#   timeout: 1000                                    #针对所有后端的请求最长处理时间
+#   namespace: Development                           #针对所有后端的环境
+#   service:                                         #针对单个后端的配置
+#     - name: trpc.redis.test_example #后端服务的service name
+#       target: ip://127.0.0.1:6379
+#       timeout: 5000 #当前请求最长处理时间
+#       password: ${redis_password}
+#       redis:
+#         db: 0
+
+# Plugin configuration
+plugins:
+  log:  # Logging configuration
+    default:  # Default logger configuration
+      - writer: console  # Console output
+        level: info  # Log level
+        format_config:
+          fmt: "[%(asctime)s.%(msecs)03d][%(levelname)s][%(filename)s:%(lineno)s][%(process)d][%(message)s]"
+          time_fmt: "%Y-%m-%d %H:%M:%S"
+      - writer: file  # File output
+        level: info  # Log level
+        formatter: standard  # Log format
+        writer_config:
+          filename: ./a2a_example.log  # Log file path
+          max_size: 10  # Max file size in MB
+          max_backups: 10  # Max number of backup files
+          max_age: 7  # Max days to retain logs
+          compress: false  # Whether to compress old logs
+        format_config:
+          fmt: "[%(asctime)s][%(levelname)s][%(filename)s:%(lineno)s][%(process)d][%(message)s]"
+          time_fmt: "%Y-%m-%d %H:%M:%S"

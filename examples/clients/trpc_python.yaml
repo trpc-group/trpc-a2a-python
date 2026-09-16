@@ -1,0 +1,34 @@
+# tRPC configuration for A2A example
+global:  # Global configuration
+  namespace: Development  # Environment type: production or development
+  env_name: test  # Environment name for non-production environments
+
+client:                                            #客户端调用的后端配置
+  service: #针对单个后端的配置
+    - name: trpc.a2a_test.test_a2a_agent
+      network: tcp
+      protocol: a2a
+      target: ip://127.0.0.1:18080
+      timeout: 10000
+
+# Plugin configuration
+plugins:
+  log:  # Logging configuration
+    default:  # Default logger configuration
+      - writer: console  # Console output
+        level: info  # Log level
+        format_config:
+          fmt: "[%(asctime)s.%(msecs)03d][%(levelname)s][%(filename)s:%(lineno)s][%(process)d][%(message)s]"
+          time_fmt: "%Y-%m-%d %H:%M:%S"
+      - writer: file  # File output
+        level: info  # Log level
+        formatter: standard  # Log format
+        writer_config:
+          filename: ./a2a_client_example.log  # Log file path
+          max_size: 10  # Max file size in MB
+          max_backups: 10  # Max number of backup files
+          max_age: 7  # Max days to retain logs
+          compress: false  # Whether to compress old logs
+        format_config:
+          fmt: "[%(asctime)s][%(levelname)s][%(filename)s:%(lineno)s][%(process)d][%(message)s]"
+          time_fmt: "%Y-%m-%d %H:%M:%S"
