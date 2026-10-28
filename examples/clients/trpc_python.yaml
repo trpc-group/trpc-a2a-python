@@ -3,8 +3,8 @@ global:  # Global configuration
   namespace: Development  # Environment type: production or development
   env_name: test  # Environment name for non-production environments
 
-client:                                            #客户端调用的后端配置
-  service: #针对单个后端的配置
+client:                                            # Backends this process calls
+  service: # Per-backend settings
     - name: trpc.a2a_test.test_a2a_agent
       network: tcp
       protocol: a2a

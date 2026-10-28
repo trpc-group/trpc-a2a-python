@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """FastAPI application with tRPC integration."""
 
 import httpx
@@ -26,14 +28,21 @@ from a2a.utils.errors import ServerError
 
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-from trpc.log import logger
-from trpc.config import config as trpc_config
+from trpc_sdk.config import ServerService
+from trpc_sdk.log import logger
 from trpc_fastapi import get_trpc_ctx
 
 from .a2a_service import TrpcA2AService
 from .trpc_agent_executor import TrpcA2AAgentExecutor
 from .utils import set_trpc_context_in_call_context
 from .redis_conf import RedisConf
+
+
+def _service_addr(service_config: ServerService) -> str:
+    """Return the ``host:port`` a service listens on, taken from ``address`` when ``ip`` is empty."""
+    if not service_config.ip and service_config.address:
+        return service_config.address
+    return f"{service_config.ip}:{service_config.port}"
 
 
 class TrpcRequestHandler(DefaultRequestHandler):
@@ -123,7 +132,7 @@ class TrpcFastAPIApp(A2AFastAPIApplication):
         self,
         agent_card,
         service: TrpcA2AService,
-        service_config: trpc_config.Service,
+        service_config: ServerService,
         extended_agent_card=None,
         context_builder=None,
         redis_config: RedisConf = None,
@@ -142,7 +151,7 @@ class TrpcFastAPIApp(A2AFastAPIApplication):
         """
         # Create request handler with agent executor
         agent_executor = TrpcA2AAgentExecutor(service)
-        if redis_config.redis_name:
+        if redis_config and redis_config.redis_name:
             from .redis_task_store import RedisTaskStore
             from .redis_push_notification_config_store import RedisPushNotificationConfigStore
 
@@ -174,7 +183,7 @@ class TrpcFastAPIApp(A2AFastAPIApplication):
         self._service = service
         self._service_name = service_config.name
         self._service_config = service_config
-        self._addr = f"{service_config.ip}:{service_config.port}"
+        self._addr = _service_addr(service_config)
 
         logger.info(f"[A2A] Initialized tRPC FastAPI app for service '{self._service_name}' on {self._addr}")
 
@@ -198,7 +207,7 @@ class TrpcFastAPIApp(A2AFastAPIApplication):
     async def create_app(
         cls,
         service: TrpcA2AService,
-        service_config: trpc_config.Service,
+        service_config: ServerService,
         redis_config: RedisConf,
     ) -> FastAPI:
         """Create FastAPI app with A2A handlers.
@@ -220,7 +229,7 @@ class TrpcFastAPIApp(A2AFastAPIApplication):
             agent_card = await service.get_agent_card()
             # if not set, inject service's ip:port into agent card url
             if not agent_card.url:
-                agent_card.url = f"http://{service_config.ip}:{service_config.port}"
+                agent_card.url = f"http://{_service_addr(service_config)}"
         except Exception as e:
             logger.error(f"[A2A] Failed to get agent card from service: {e}")
             raise

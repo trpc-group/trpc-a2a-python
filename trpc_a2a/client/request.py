@@ -1,18 +1,23 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Request and response classes for tRPC-A2A client integration."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
 
 import httpx
 
 from a2a.client.legacy import A2AClient
 from a2a.client.middleware import ClientCallInterceptor
 
-from trpc.trpc_abc.context import Context
-from trpc.exceptions import ClientInvokeError
-from trpc.log import logger
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.exceptions import ClientInvokeError
+from trpc_sdk.log import logger
 
 from trpc_a2a.client.utils import get_a2a_client_context
 from trpc_a2a.client.a2a_card_resolver import ResolverResult
@@ -49,7 +54,7 @@ class _Request:
         self.card_resolver: Optional[ResolverResult] = None
         self.httpx_client: Optional[httpx.AsyncClient] = None
 
-    async def do_request(self, a2a_client: A2AClient, context: Context) -> "_Response":
+    async def do_request(self, a2a_client: A2AClient, context: TrpcContext) -> "_Response":
         """Execute the A2A request using the provided client and context.
 
         Args:
@@ -60,7 +65,7 @@ class _Request:
             _Response containing the result or error
 
         Raises:
-            TRPCBaseError: For A2A client errors
+            TrpcException: For A2A client errors
             ClientInvokeError: For unexpected errors
         """
         try:
@@ -80,7 +85,9 @@ class _Request:
         if "http_kwargs" in method_kwargs:
             http_kwargs = method_kwargs["http_kwargs"]
             if "timeout" not in http_kwargs:
-                method_kwargs["http_kwargs"]["timeout"] = context.timeout
+                # httpx takes seconds; a non-positive tRPC timeout means no limit
+                timeout_sec = context.get_timeout_sec()
+                method_kwargs["http_kwargs"]["timeout"] = timeout_sec if timeout_sec > 0 else None
 
         # Call the A2A client method
         if self.method in self.STREAMING_METHODS:

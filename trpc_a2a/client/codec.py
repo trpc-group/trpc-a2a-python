@@ -1,59 +1,65 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """A2A codec implementation for tRPC-Python integration."""
 
-from trpc.trpc_abc.codec import Codec, Message
-from trpc.plugin import PluginType, register_plugin, PluginInitPos
+from typing import Optional
 
-from trpc_a2a.common import PLUGIN_NAME, VERSION
+from trpc_sdk.abc import BaseCodec
+from trpc_sdk.abc import PluginInitPos
+from trpc_sdk.abc import PluginType
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.plugin import register_plugin
+
+from trpc_a2a.common import PLUGIN_NAME
+from trpc_a2a.common import VERSION
 
 
 @register_plugin(
     PluginType.CLIENT_CODEC,
     PLUGIN_NAME,
-    init_pos=PluginInitPos.MASTER,
+    init_pos=PluginInitPos.WORKER,
     version=VERSION,
-    stat_flag=True,
+    report=True,
 )
-class A2AClientCodec(Codec):
+class A2AClientCodec(BaseCodec):
     """
     A2A Client Codec for tRPC-Python.
 
-    This codec handles encoding and decoding of A2A protocol messages.
-    Since A2A operations are handled through the transport layer with
-    actual request/response objects, this codec provides minimal
-    encoding/decoding functionality.
+    A2A requests and responses travel as objects on the message heads and are
+    sent by the A2A SDK inside the transport, so this codec only passes the
+    body through.
     """
 
-    @classmethod
-    def encode(cls, message: Message, body: bytes) -> bytes:
-        """Encode A2A message.
+    def encode_data(self, context: TrpcContext, body: Optional[bytes]) -> bytes:
+        """Return the request body when it is bytes, otherwise ``b""``.
+
+        Noop serialization hands the ``_Request`` object itself to the codec;
+        the transport reads it from the message head instead.
 
         Args:
-            message: The tRPC message instance
-            body: The message body bytes
+            context: Client context. Unused.
+            body: Serialized request body.
 
         Returns:
-            Encoded bytes (empty for A2A as encoding is handled by transport)
+            ``body`` when it is bytes, otherwise ``b""``.
         """
-        # A2A encoding is handled at the transport layer with A2A SDK
-        # Return empty bytes as the actual data is in message headers
+        if isinstance(body, (bytes, bytearray)):
+            return body
         return b""
 
-    @classmethod
-    def decode(cls, message: Message, body: bytes) -> bytes:
-        """Decode A2A message.
+    def decode_data(self, context: TrpcContext, buffer: Optional[bytes]) -> bytes:
+        """Return the response buffer unchanged, or ``b""`` when there is none.
 
         Args:
-            message: The tRPC message instance
-            body: The message body bytes to decode
+            context: Client context. Unused.
+            buffer: Bytes returned by the transport.
 
         Returns:
-            Decoded bytes
+            ``buffer``, or ``b""`` when it is ``None``.
         """
-        # A2A decoding is handled at the transport layer with A2A SDK
-        # Return the body as-is, or convert to bytes if needed
-        if body is not None:
-            return body
-        return bytes(str(body), encoding="utf-8")
+        if buffer is None:
+            return b""
+        return buffer

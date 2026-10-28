@@ -1,30 +1,42 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """A2A client transport implementation for tRPC-Python integration."""
 
 import asyncio
 from typing import Dict
+from typing import Optional
 from dataclasses import dataclass
 
-from a2a.types import SendMessageResponse, JSONRPCErrorResponse
+from a2a.types import SendMessageResponse
+from a2a.types import JSONRPCErrorResponse
 import httpx
 
-from trpc.plugin import PluginInitPos, PluginType, register_plugin
-from trpc.transport.options import RoundTripOptions
-from trpc.trpc_abc.context import Context
-from trpc.trpc_abc.transport import BaseClientTransport
-from trpc.transport import get_client_transport
-from trpc.http.codec import ClientReqHeader
-from trpc.exceptions import TRPCBaseError, ClientInvokeError, NewFrameError, ErrorCode
-from trpc.log import logger
+from trpc_sdk.abc import BaseClientTransport
+from trpc_sdk.abc import PluginInitPos
+from trpc_sdk.abc import PluginType
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.abc import get_message
+from trpc_sdk.exceptions import ClientInvokeError
+from trpc_sdk.exceptions import TrpcErrorCode
+from trpc_sdk.exceptions import TrpcException
+from trpc_sdk.exceptions import create_frame_error
+from trpc_sdk.http import HttpClientReqHeader
+from trpc_sdk.log import logger
+from trpc_sdk.plugin import register_plugin
+from trpc_sdk.transport import RoundTripOptions
+from trpc_sdk.transport import get_client_transport
 
 from a2a.client.legacy import A2AClient
 from a2a.client.errors import A2AClientError
 
-from ..common import PLUGIN_NAME, VERSION
+from ..common import PLUGIN_NAME
+from ..common import VERSION
 
-from .request import _Request, _Response
+from .request import _Request
+from .request import _Response
 from .utils import convert_a2a_error_to_trpc_error
 
 
@@ -39,9 +51,9 @@ class _A2AClientInfo:
 @register_plugin(
     PluginType.CLIENT_TRANSPORT,
     PLUGIN_NAME,
-    init_pos=PluginInitPos.MASTER,
+    init_pos=PluginInitPos.WORKER,
     version=VERSION,
-    stat_flag=True,
+    report=True,
 )
 class A2AClientTransport(BaseClientTransport):
     """
@@ -54,8 +66,9 @@ class A2AClientTransport(BaseClientTransport):
 
     def __init__(self):
         """Initialize the A2A client transport."""
+        super().__init__()
         self._client_infos: Dict[str, _A2AClientInfo] = {}
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
         self._closed = False
 
     def __del__(self):
@@ -71,7 +84,7 @@ class A2AClientTransport(BaseClientTransport):
         """Async context manager exit - ensures cleanup."""
         await self.close()
 
-    async def round_trip(self, ctx: Context, req_data: bytes, options: RoundTripOptions) -> bytes:
+    async def round_trip(self, ctx: TrpcContext, req_data: bytes, options: RoundTripOptions) -> bytes:
         """Handle client request and return response.
 
         Args:
@@ -83,14 +96,13 @@ class A2AClientTransport(BaseClientTransport):
             Response data (placeholder bytes)
 
         Raises:
-            TRPCBaseError: For A2A client errors converted to framework errors
+            TrpcException: For A2A client errors converted to framework errors
             ClientInvokeError: For unexpected errors
         """
-        message = ctx.msg
-        # Polaris will register a service with a2a protocol
-        # So, when select node by polaris, it will return a2a protocol node
-        # This node should be routed by http transport
-        if isinstance(message.client_req_head, ClientReqHeader):
+        message = get_message(ctx)
+        # A naming service may resolve to a node registered with a2a protocol while
+        # the request header is HTTP; such requests are routed by the http transport.
+        if isinstance(message.client_req_head, HttpClientReqHeader):
             http_transport = get_client_transport("http")
             if not http_transport:
                 raise ClientInvokeError("HTTP transport not found")
@@ -111,9 +123,9 @@ class A2AClientTransport(BaseClientTransport):
             # (as round_trip current not support returning iterator)
             if isinstance(result, SendMessageResponse) and isinstance(result.root, JSONRPCErrorResponse):
                 error = result.root.error
-                raise NewFrameError(error.code, error.message)
+                raise create_frame_error(error.code, error.message)
             message.set_client_rsp_head(response)
-        except TRPCBaseError as e:
+        except TrpcException as e:
             raise e
         except A2AClientError as e:
             # Convert A2A errors to TRPC business errors
@@ -122,11 +134,11 @@ class A2AClientTransport(BaseClientTransport):
             raise trpc_error
         except Exception as e:
             logger.error(f"[A2A Transport] Unexpected error: {str(e)}")
-            raise NewFrameError(ErrorCode.TRPC_INVOKE_UNKNOWN_ERR, str(e))
+            raise create_frame_error(TrpcErrorCode.TRPC_INVOKE_UNKNOWN_ERR, str(e))
 
         return b"success"
 
-    async def _get_a2a_client(self, ctx: Context, request: _Request) -> A2AClient:
+    async def _get_a2a_client(self, ctx: TrpcContext, request: _Request) -> A2AClient:
         """Get or create an A2A client instance based on service_name.
 
         Args:
@@ -148,7 +160,9 @@ class A2AClientTransport(BaseClientTransport):
         if service_name in self._client_infos:
             return self._client_infos[service_name].a2a_client
 
-        # Use async lock to ensure thread safety during client creation
+        # Created here, not in __init__, so the lock belongs to the loop that serves requests
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             # Double-check pattern
             if service_name in self._client_infos:
@@ -161,7 +175,7 @@ class A2AClientTransport(BaseClientTransport):
 
             return client_info.a2a_client
 
-    async def _create_a2a_client(self, ctx: Context, request: _Request) -> _A2AClientInfo:
+    async def _create_a2a_client(self, ctx: TrpcContext, request: _Request) -> _A2AClientInfo:
         """Create a new A2A client instance using the request information.
 
         Args:

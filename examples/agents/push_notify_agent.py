@@ -1,12 +1,14 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Example A2A agent implementation demonstrating multi-step processes with push notifications using tRPC-A2A."""
 
 import asyncio
 
-from trpc.log import logger
-from trpc.trpc_abc.context import Context
+from trpc_sdk.log import logger
+from trpc_sdk.abc import TrpcContext
 
 from a2a.types import (
     AgentCard,
@@ -70,7 +72,7 @@ class PushNotifyAgentService(TrpcA2AService):
         logger.debug(f"[PushNotifyAgent] Returning agent card: {agent_card.name} v{agent_card.version}")
         return agent_card
 
-    async def execute(self, context: Context, event_queue: EventQueue) -> None:
+    async def execute(self, context: TrpcContext, event_queue: EventQueue) -> None:
         """Execute the agent's multi-step process logic.
 
         The framework automatically sends push notifications whenever we update
@@ -118,7 +120,7 @@ class PushNotifyAgentService(TrpcA2AService):
                 final=True,
             )
 
-    async def cancel(self, context: Context, event_queue: EventQueue) -> None:
+    async def cancel(self, context: TrpcContext, event_queue: EventQueue) -> None:
         """Cancel an ongoing task.
 
         Cancellation status update will also trigger automatic push notification.

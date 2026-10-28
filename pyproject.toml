@@ -11,23 +11,21 @@ dynamic = ["version"]
 description = "TRPC Microservice Control Protocol implementation"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [
-    {name = "Tencent", email = "team@tencent.com"}
-]
+license = {text = "Apache-2.0"}
+authors = [{name = "tRPC Group"}]
 keywords = ["trpc", "agent", "microservice"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "trpc>=0.9.1",
-    "trpc-pb>=0.5.0a0",
+    "trpc-python ; sys_platform != 'win32'",
+    "trpc_fastapi",
     "pydantic>=2.11.3",
     "fastapi>=0.115.2",
     "google-api-core>=1.26.0",
@@ -43,7 +41,6 @@ dependencies = [
     "starlette>=0.46.2",
     "uvicorn>=0.35.0",
     "a2a-sdk>=0.3.5",
-    "trpc_fastapi>=0.1.2",
     "opentelemetry-instrumentation-fastapi",
 ]
 
@@ -67,7 +64,7 @@ all = [
     "trpc_redis>=0.2.0a0"
 ]
 
-# 使用 include 保证两个包都包含进来
+# Use include so both packages are packaged.
 [tool.hatch.build.targets.wheel]
 packages = ["trpc_a2a"]
 
@@ -78,11 +75,11 @@ Repository = ""
 
 
 
-# 若需包含非代码文件（如数据、模板等）
+# Include non-code files such as data and templates when present.
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md", "*.yml", "*.yaml"]
 
-# 可选：添加工具配置
+# Optional tool configuration.
 [tool.black]
 line-length = 120
 target-version = ['py310']

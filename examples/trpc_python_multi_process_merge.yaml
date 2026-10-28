@@ -1,0 +1,62 @@
+# tRPC configuration for A2A example: two worker processes that each accept and handle requests.
+# Each worker builds its own A2A app and binds the a2a address with SO_REUSEPORT,
+# so a request may land on either process.
+#
+# Tasks are kept in process memory unless redis_name is set, so tasks/get and
+# tasks/cancel may reach a process that never saw the task. In production set
+# redis_name on the a2a service and add the redis client service below.
+#
+# On macOS, start with a proxy variable set, e.g. `NO_PROXY=localhost,127.0.0.1 python examples/trpc_main.py ...`.
+# Without one, httpx reads the system proxy settings in the forked process and
+# macOS aborts it (objc "+[NSNumber initialize] ... when fork() was called").
+global:  # Global configuration
+  namespace: Development  # Environment type: production or development
+  env_name: test  # Environment name for non-production environments
+  processmodel:  # Process and thread model
+    mode: multi_process  # single_process or multi_process
+    io_handle_type: merge  # merge or separate
+    handle_num: 2  # worker processes
+
+server:  # Server configuration
+  app: test  # Application name
+  server: a2a_example  # Server name
+  close_wait_time: 2000  # Graceful shutdown drain in ms; also uvicorn's graceful shutdown timeout
+  # Service configuration
+  service:
+    # A2A service configuration
+    - name: trpc.a2a_test.test_a2a_agent
+      protocol: a2a  # Key identifier for A2A protocol
+      ip: 127.0.0.1  # Service listening IP
+      port: 18080  # Service listening port
+      network: tcp
+      # redis_name: trpc.redis.test_example
+# client:
+#   service:
+#     - name: trpc.redis.test_example
+#       target: ip://127.0.0.1:6379
+#       timeout: 5000
+#       password: ${redis_password}
+#       redis:
+#         db: 0
+
+# Plugin configuration
+plugins:
+  log:  # Logging configuration
+    default:  # Default logger configuration
+      - writer: console  # Console output
+        level: info  # Log level
+        format_config:
+          fmt: "[%(asctime)s.%(msecs)03d][%(levelname)s][%(filename)s:%(lineno)s][%(process)d][%(message)s]"
+          time_fmt: "%Y-%m-%d %H:%M:%S"
+      - writer: file  # File output
+        level: info  # Log level
+        formatter: standard  # Log format
+        writer_config:
+          filename: ./a2a_example_multi_process_merge.log  # Log file path
+          max_size: 10  # Max file size in MB
+          max_backups: 10  # Max number of backup files
+          max_age: 7  # Max days to retain logs
+          compress: false  # Whether to compress old logs
+        format_config:
+          fmt: "[%(asctime)s][%(levelname)s][%(filename)s:%(lineno)s][%(process)d][%(message)s]"
+          time_fmt: "%Y-%m-%d %H:%M:%S"

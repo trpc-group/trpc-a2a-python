@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Task-specific push notification client demonstrating task callback notifications with tRPC-A2A server."""
 
 import asyncio
@@ -14,11 +16,11 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from trpc.trpc_abc.context import Context
-from trpc.log import logger
-from trpc import config
-from trpc.plugin import setup
-from trpc.exceptions import TRPCBaseError
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.log import logger
+from trpc_sdk.config import TrpcConfig
+from trpc_sdk.plugin import init_plugins
+from trpc_sdk.exceptions import TrpcException
 
 from a2a.types import (
     Message,
@@ -168,7 +170,7 @@ class TaskPushNotificationTrpcA2AClient:
             self.card_resolver = TrpcA2ACardResolver()
 
             # Create tRPC context
-            ctx = Context()
+            ctx = TrpcContext()
 
             # Get agent card using the resolver
             resolver_result = await self.card_resolver.get_from_agent_service(ctx, self.service_name)
@@ -198,7 +200,7 @@ class TaskPushNotificationTrpcA2AClient:
 
             return True
 
-        except TRPCBaseError as e:
+        except TrpcException as e:
             logger.error(f"Failed to initialize client (TRPC error): {e}")
             return False
         except Exception as e:  # pylint: disable=broad-except
@@ -221,7 +223,7 @@ class TaskPushNotificationTrpcA2AClient:
             request = SendMessageRequest(id=str(uuid4()), params=MessageSendParams(message=message))
 
             # Create tRPC context
-            ctx = Context()
+            ctx = TrpcContext()
             response = await self.a2a_client.send_message(ctx, request)
 
             result = response.root.result
@@ -383,8 +385,8 @@ class TaskPushNotificationTrpcA2AClient:
 async def main():
     """Main function to run the task-specific push notification tests."""
     # Setup tRPC-Python environment
-    config.load_global_config("examples/clients/trpc_python.yaml", "utf-8")
-    setup()
+    TrpcConfig.load("examples/clients/trpc_python.yaml", "utf-8")
+    init_plugins()
 
     async with TaskPushNotificationTrpcA2AClient("trpc.a2a_test.test_a2a_agent", 19081) as client:
         try:
