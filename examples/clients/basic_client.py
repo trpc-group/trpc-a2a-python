@@ -1,17 +1,19 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Basic A2A client for testing text communication with tRPC-A2A server."""
 
 import asyncio
 from uuid import uuid4
 from typing import Optional
 
-from trpc.trpc_abc.context import Context
-from trpc.log import logger
-from trpc import config
-from trpc.plugin import setup
-from trpc.exceptions import TRPCBaseError
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.log import logger
+from trpc_sdk.config import TrpcConfig
+from trpc_sdk.plugin import init_plugins
+from trpc_sdk.exceptions import TrpcException
 
 from a2a.types import (
     Message,
@@ -54,7 +56,7 @@ class BasicTrpcA2AClient:
             self.card_resolver = TrpcA2ACardResolver()
 
             # Create tRPC context
-            ctx = Context()
+            ctx = TrpcContext()
 
             # Get agent card using the resolver
             # Use the agent service approach for discovery
@@ -71,7 +73,7 @@ class BasicTrpcA2AClient:
 
             return True
 
-        except TRPCBaseError as e:
+        except TrpcException as e:
             logger.error(f"Failed to initialize client (TRPC error): {e}")
             return False
         except Exception as e:  # pylint: disable=broad-except
@@ -89,7 +91,7 @@ class BasicTrpcA2AClient:
             request = SendMessageRequest(id=str(uuid4()), params=MessageSendParams(message=message))
 
             logger.info("Sending message via send_message...")
-            response = await self.a2a_client.send_message(Context(), request)
+            response = await self.a2a_client.send_message(TrpcContext(), request)
 
             result = response.root.result
 
@@ -116,7 +118,7 @@ class BasicTrpcA2AClient:
 
             return False
 
-        except TRPCBaseError as e:
+        except TrpcException as e:
             logger.error(f"send_message test error: {e}")
             return False
         except Exception as e:  # pylint: disable=broad-except
@@ -137,7 +139,7 @@ class BasicTrpcA2AClient:
             event_count = 0
             final_result = None
 
-            async for response in self.a2a_client.send_message_streaming(Context(), streaming_request):
+            async for response in self.a2a_client.send_message_streaming(TrpcContext(), streaming_request):
                 event_count += 1
 
                 result = response.root.result
@@ -165,7 +167,7 @@ class BasicTrpcA2AClient:
             logger.info(f"Streaming completed with {event_count} events")
             return final_result is not None
 
-        except TRPCBaseError as e:
+        except TrpcException as e:
             logger.error(f"send_message_streaming test error: {e}")
             return False
         except Exception as e:  # pylint: disable=broad-except
@@ -216,8 +218,8 @@ class BasicTrpcA2AClient:
 async def main():
     """Main function to run the basic A2A tests."""
     # Setup tRPC-Python environment
-    config.load_global_config("examples/clients/trpc_python.yaml", "utf-8")
-    setup()
+    TrpcConfig.load("examples/clients/trpc_python.yaml", "utf-8")
+    init_plugins()
 
     # Run tRPC-A2A client
     async with BasicTrpcA2AClient(service_name="trpc.a2a_test.test_a2a_agent") as client:

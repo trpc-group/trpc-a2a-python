@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Utility functions for tRPC-A2A integration."""
 
 from typing import Optional
@@ -8,27 +10,27 @@ from typing import Optional
 from a2a.server.agent_execution import RequestContext
 from a2a.server.context import ServerCallContext
 
-from trpc.trpc_abc.context import Context
-from trpc.log import logger
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.log import logger
 
 A2A_CONTEXT_KEY = "__trpc_a2a_request_context__"
 TRPC_CONTEXT_KEY = "__trpc_context__"
 
 
-def get_a2a_request_context(trpc_context: Context) -> Optional[RequestContext]:
+def get_a2a_request_context(trpc_context: TrpcContext) -> Optional[RequestContext]:
     """Extract A2A RequestContext from tRPC Context.
 
     This utility function retrieves the A2A RequestContext that was
     stored in the tRPC Context during request processing.
 
     Args:
-        trpc_context: The tRPC Context instance
+        trpc_context: The tRPC context instance
 
     Returns:
         A2A RequestContext if found, None otherwise
 
     Example:
-        >>> async def execute(self, context: Context, event_queue: EventQueue):
+        >>> async def execute(self, context: TrpcContext, event_queue: EventQueue):
         >>>     # Get A2A context from tRPC context
         >>>     a2a_context = get_a2a_request_context(context)
         >>>     if a2a_context:
@@ -45,18 +47,18 @@ def get_a2a_request_context(trpc_context: Context) -> Optional[RequestContext]:
         return None
 
 
-def set_a2a_request_context(trpc_context: Context, request_context: RequestContext) -> None:
+def set_a2a_request_context(trpc_context: TrpcContext, request_context: RequestContext) -> None:
     """Store A2A RequestContext in tRPC Context.
 
     This utility function stores the A2A RequestContext in the tRPC
     Context's metadata for later retrieval.
 
     Args:
-        trpc_context: The tRPC Context instance
+        trpc_context: The tRPC context instance
         request_context: The A2A RequestContext to store
 
     Example:
-        >>> trpc_ctx = Context()
+        >>> trpc_ctx = TrpcContext()
         >>> a2a_ctx = RequestContext(...)
         >>> set_a2a_request_context(trpc_ctx, a2a_ctx)
     """
@@ -68,7 +70,7 @@ def set_a2a_request_context(trpc_context: Context, request_context: RequestConte
         raise
 
 
-def set_trpc_context_in_call_context(call_context: ServerCallContext, trpc_context: Context) -> None:
+def set_trpc_context_in_call_context(call_context: ServerCallContext, trpc_context: TrpcContext) -> None:
     """Store tRPC Context in ServerCallContext state.
 
     This utility function stores the tRPC Context in the A2A
@@ -80,15 +82,15 @@ def set_trpc_context_in_call_context(call_context: ServerCallContext, trpc_conte
 
     Example:
         >>> call_context = ServerCallContext(...)
-        >>> trpc_ctx = Context()
+        >>> trpc_ctx = TrpcContext()
         >>> set_trpc_context_in_call_context(call_context, trpc_ctx)
     """
     call_context.state[TRPC_CONTEXT_KEY] = trpc_context
     logger.debug("[A2A] Stored tRPC context in call_context.state")
 
 
-def get_trpc_context_from_request_context(request_context: RequestContext) -> Optional[Context]:
-    """Extract tRPC Context from A2A RequestContext.
+def get_trpc_context_from_request_context(request_context: RequestContext) -> Optional[TrpcContext]:
+    """Extract tRPC TrpcContext from A2A RequestContext.
 
     This utility function retrieves the tRPC Context that was stored
     in the RequestContext's call_context state during request processing.

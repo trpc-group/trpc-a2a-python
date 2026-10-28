@@ -1,11 +1,13 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Streaming A2A agent implementation demonstrating real-time updates."""
 
 import asyncio
-from trpc.log import logger
-from trpc.trpc_abc.context import Context
+from trpc_sdk.log import logger
+from trpc_sdk.abc import TrpcContext
 
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill, TextPart, Part, TaskState
 from a2a.server.events import EventQueue
@@ -43,7 +45,7 @@ class StreamingAgentService(TrpcA2AService):
             ],
         )
 
-    async def execute(self, context: Context, event_queue: EventQueue) -> None:
+    async def execute(self, context: TrpcContext, event_queue: EventQueue) -> None:
         """Execute the agent's logic with streaming updates."""
         # Get A2A request context
         a2a_context = get_a2a_request_context(context)
@@ -83,7 +85,7 @@ class StreamingAgentService(TrpcA2AService):
                 final=True,
             )
 
-    async def cancel(self, context: Context, event_queue: EventQueue) -> None:
+    async def cancel(self, context: TrpcContext, event_queue: EventQueue) -> None:
         """Cancel an ongoing task."""
         # Get A2A request context
         a2a_context = get_a2a_request_context(context)

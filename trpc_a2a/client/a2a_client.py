@@ -1,10 +1,17 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """A2A Client wrapper for tRPC-Python integration."""
 
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import List
+from typing import Optional
 from collections.abc import AsyncGenerator
+from urllib.parse import urlparse
 
 import httpx
 
@@ -28,19 +35,44 @@ from a2a.types import (
 from a2a.client.middleware import ClientCallInterceptor
 from a2a.client.errors import A2AClientError
 
-from trpc import client as TRPCClient
-from trpc.client.options import with_service_name, with_serialization_type, with_protocol, with_timeout
-from trpc.codec import clone_client_message, SerializationType
-from trpc.trpc_abc.context import Context
-from trpc.exceptions import NewFrameError, TRPCBaseError, ErrorCode
-from trpc.log import logger
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.abc import clone_client_message
+from trpc_sdk.client import Options
+from trpc_sdk.client import get_client
+from trpc_sdk.client import normalize_options
+from trpc_sdk.exceptions import TrpcErrorCode
+from trpc_sdk.exceptions import TrpcException
+from trpc_sdk.exceptions import create_frame_error
+from trpc_sdk.log import logger
+from trpc_sdk.serialization import SerializationType
 
-from trpc_a2a.client.request import _Request, _Response
-from trpc_a2a.client.a2a_card_resolver import ResolverResult, ResolverSource
+from trpc_a2a.common import PROTOCOL_NAME
+from trpc_a2a.client.request import _Request
+from trpc_a2a.client.request import _Response
+from trpc_a2a.client.a2a_card_resolver import ResolverResult
+from trpc_a2a.client.a2a_card_resolver import ResolverSource
 from trpc_a2a.client.utils import convert_a2a_error_to_trpc_error
 
 # default a2a invoke timeout: 10s
 _DEFAULT_TIMEOUT = 10000
+
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _target_from_url(url: str) -> str:
+    """Turn an agent URL into an ``ip://host:port`` client target.
+
+    Args:
+        url: Agent card URL, e.g. ``http://127.0.0.1:18080``.
+
+    Returns:
+        The target, or ``""`` when the URL has no host.
+    """
+    parsed = urlparse(url)
+    if not parsed.hostname:
+        return ""
+    port = parsed.port or _DEFAULT_PORTS.get(parsed.scheme, 80)
+    return f"ip://{parsed.hostname}:{port}"
 
 
 class TrpcA2AClient:
@@ -75,15 +107,15 @@ class TrpcA2AClient:
 
         self.card_resolver = resolver_result
         self.service_name = service_name
-        self.trpc_client = TRPCClient.get_client()
+        self.trpc_client = get_client()
         self.interceptors = interceptors or []
         self.httpx_client = httpx_client
 
-    async def _invoke(self, ctx: Context, request: _Request, options: Optional[List[Callable]] = None) -> _Response:
+    async def _invoke(self, ctx: TrpcContext, request: _Request, options: Optional[List[Callable]] = None) -> _Response:
         """Common setup and invocation logic for both handle methods.
 
         Args:
-            ctx: The tRPC Context instance
+            ctx: The tRPC context instance
             request: The A2A request wrapper
             options: Optional method-specific tRPC options
 
@@ -91,7 +123,7 @@ class TrpcA2AClient:
             The response from the tRPC client
 
         Raises:
-            TRPCBaseError: For tRPC or A2A client errors
+            TrpcException: For tRPC or A2A client errors
         """
         ctx, msg = clone_client_message(ctx)
         msg.set_callee_service_name(self.service_name)
@@ -106,23 +138,17 @@ class TrpcA2AClient:
         # Set the A2A request as the client request head
         msg.set_client_req_head(request)
 
-        needed_options = [
-            with_service_name(self.service_name),
-            with_serialization_type(SerializationType.Noop),
-        ]
+        needed_options = Options().set_service_name(self.service_name).set_serialization_type(SerializationType.Noop)
 
         if self.card_resolver.source == ResolverSource.URL:
-            needed_options.extend([
-                with_protocol("a2a"),
-                # Set default timeout(10s) for non-yaml scenario.
-                # It can be replaced when user pass options.
-                with_timeout(_DEFAULT_TIMEOUT),
-            ])
+            # Set default timeout(10s) for non-yaml scenario.
+            # It can be replaced when user pass options.
+            needed_options.set_protocol(PROTOCOL_NAME).set_timeout(_DEFAULT_TIMEOUT)
+            target = _target_from_url(self.card_resolver.card.url)
+            if target:
+                needed_options.set_target(target)
 
-        if options is None:
-            options = needed_options
-        else:
-            options.extend(needed_options)
+        options = [needed_options] + normalize_options(options)
 
         logger.debug(f"[A2A Client] Invoking tRPC client with A2A method: {request.method}")
 
@@ -133,13 +159,13 @@ class TrpcA2AClient:
         return msg.client_rsp_head
 
     async def _handle_streaming(self,
-                                ctx: Context,
+                                ctx: TrpcContext,
                                 request: _Request,
                                 options: Optional[List[Callable]] = None) -> AsyncGenerator[Any, None]:
         """Handle streaming A2A request through tRPC infrastructure.
 
         Args:
-            ctx: The tRPC Context instance
+            ctx: The tRPC context instance
             request: The A2A request wrapper
             options: Optional method-specific tRPC options
 
@@ -147,7 +173,7 @@ class TrpcA2AClient:
             The streaming response items from A2A operation
 
         Raises:
-            TRPCBaseError: For tRPC or A2A client errors
+            TrpcException: For tRPC or A2A client errors
         """
         # Because trpc-python's invoke method currently not supported returning iterator,
         # we need to encapsulate the error here which mainly keep user interface consistent with unary invoke.
@@ -159,12 +185,12 @@ class TrpcA2AClient:
                 async for item in response.result:
                     if isinstance(item.root, JSONRPCErrorResponse):
                         error = item.root.error
-                        raise NewFrameError(error.code, error.message)
+                        raise create_frame_error(error.code, error.message)
                     yield item
             else:
                 # If it's not an AsyncGenerator, yield the result as a single item
                 yield response.result
-        except TRPCBaseError as e:
+        except TrpcException as e:
             raise e
         except A2AClientError as e:
             # Convert A2A errors to TRPC business errors
@@ -173,13 +199,13 @@ class TrpcA2AClient:
             raise trpc_error
         except Exception as e:
             logger.error(f"[A2A Client] Unexpected error: {str(e)}")
-            raise NewFrameError(ErrorCode.TRPC_INVOKE_UNKNOWN_ERR, str(e))
+            raise create_frame_error(TrpcErrorCode.TRPC_INVOKE_UNKNOWN_ERR, str(e))
 
-    async def _handle(self, ctx: Context, request: _Request, options: Optional[List[Callable]] = None) -> Any:
+    async def _handle(self, ctx: TrpcContext, request: _Request, options: Optional[List[Callable]] = None) -> Any:
         """Handle A2A request through tRPC infrastructure.
 
         Args:
-            ctx: The tRPC Context instance
+            ctx: The tRPC context instance
             request: The A2A request wrapper
             options: Optional method-specific tRPC options
 
@@ -187,14 +213,14 @@ class TrpcA2AClient:
             The response result from A2A operation
 
         Raises:
-            TRPCBaseError: For tRPC or A2A client errors
+            TrpcException: For tRPC or A2A client errors
         """
         response = await self._invoke(ctx, request, options)
         return response.result
 
     async def send_message(
         self,
-        context: Context,
+        context: TrpcContext,
         request: SendMessageRequest,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
@@ -213,7 +239,7 @@ class TrpcA2AClient:
             A SendMessageResponse object containing the agent's response (Task or Message) or an error
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(
@@ -230,7 +256,7 @@ class TrpcA2AClient:
 
     async def send_message_streaming(
         self,
-        context: Context,
+        context: TrpcContext,
         request: SendStreamingMessageRequest,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
@@ -252,7 +278,7 @@ class TrpcA2AClient:
             These can be Task, Message, TaskStatusUpdateEvent, or TaskArtifactUpdateEvent
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(
@@ -271,7 +297,7 @@ class TrpcA2AClient:
 
     async def get_task(
         self,
-        context: Context,
+        context: TrpcContext,
         request: GetTaskRequest,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
@@ -290,7 +316,7 @@ class TrpcA2AClient:
             A GetTaskResponse object containing the Task or an error
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(
@@ -307,7 +333,7 @@ class TrpcA2AClient:
 
     async def cancel_task(
         self,
-        context: Context,
+        context: TrpcContext,
         request: CancelTaskRequest,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
@@ -326,7 +352,7 @@ class TrpcA2AClient:
             A CancelTaskResponse object containing the updated Task with canceled status or an error
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(
@@ -343,7 +369,7 @@ class TrpcA2AClient:
 
     async def set_task_callback(
         self,
-        context: Context,
+        context: TrpcContext,
         request: SetTaskPushNotificationConfigRequest,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
@@ -362,7 +388,7 @@ class TrpcA2AClient:
             A SetTaskPushNotificationConfigResponse object containing the confirmation or an error
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(
@@ -379,7 +405,7 @@ class TrpcA2AClient:
 
     async def get_task_callback(
         self,
-        context: Context,
+        context: TrpcContext,
         request: GetTaskPushNotificationConfigRequest,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
@@ -398,7 +424,7 @@ class TrpcA2AClient:
             A GetTaskPushNotificationConfigResponse object containing the configuration or an error
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(
@@ -415,7 +441,7 @@ class TrpcA2AClient:
 
     async def resubscribe(
         self,
-        context: Context,
+        context: TrpcContext,
         request: TaskResubscriptionRequest,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
@@ -437,7 +463,7 @@ class TrpcA2AClient:
             These can be Task, Message, TaskStatusUpdateEvent, or TaskArtifactUpdateEvent
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(
@@ -456,7 +482,7 @@ class TrpcA2AClient:
 
     async def get_card(
         self,
-        context: Context,
+        context: TrpcContext,
         *,
         http_kwargs: Optional[Dict[str, Any]] = None,
         options: List[Callable] = None,
@@ -473,7 +499,7 @@ class TrpcA2AClient:
             An AgentCard object containing the card or an error
 
         Raises:
-            TRPCBaseError: If an A2A client error occurs during the request
+            TrpcException: If an A2A client error occurs during the request
         """
         # Create A2A request wrapper
         a2a_request = _Request(

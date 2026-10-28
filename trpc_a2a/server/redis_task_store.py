@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 
 import json
 from datetime import datetime
@@ -12,10 +14,10 @@ from a2a.types import TaskState
 from a2a.types import TaskStatus
 from a2a.server.tasks import TaskStore
 
-from trpc.log import logger
-from trpc.trpc_abc.context import Context
-from trpc_redis.client import Client as RedisClient
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.log import logger
 from .redis_conf import RedisConf
+from .redis_conf import new_redis_client
 
 
 class RedisTaskStore(TaskStore):
@@ -38,7 +40,7 @@ class RedisTaskStore(TaskStore):
         self.key_prefix = redis_config.task_key_prefix
         self._redis_name = redis_config.redis_name
         self._ttl = redis_config.ttl
-        self._redis = RedisClient(name=self._redis_name)
+        self._redis = new_redis_client(self._redis_name)
 
     @override
     async def save(self, task: Task) -> None:
@@ -50,7 +52,7 @@ class RedisTaskStore(TaskStore):
             task_data = self._serialize_task(task)
 
             # Store with TTL
-            ctx = Context()
+            ctx = TrpcContext()
             await self._redis.setex(ctx, key, self._ttl, json.dumps(task_data))
 
             logger.debug('Task %s saved successfully.', task.id)
@@ -67,7 +69,7 @@ class RedisTaskStore(TaskStore):
 
             logger.debug('Attempting to get task with id: %s', task_id)
 
-            ctx = Context()
+            ctx = TrpcContext()
             task_data = await self._redis.get(ctx, key)
             if task_data:
                 task = self._deserialize_task(json.loads(task_data))
@@ -92,7 +94,7 @@ class RedisTaskStore(TaskStore):
 
             logger.debug('Attempting to delete task with id: %s', task_id)
 
-            ctx = Context()
+            ctx = TrpcContext()
             deleted = await self._redis.delete(ctx, key)
             if deleted:
                 logger.debug('Task %s deleted successfully.', task_id)

@@ -1,13 +1,15 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """The common for trpc_a2a"""
 
 from .version import __version__
 
-# 版本名
+# Version string.
 VERSION = __version__
-# 插件名
+# Plugin name.
 PLUGIN_NAME = "a2a"
-# 协议名
+# Protocol name.
 PROTOCOL_NAME = "a2a"

@@ -1,10 +1,12 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Error A2A agent implementation for testing error scenarios."""
 
-from trpc.log import logger
-from trpc.trpc_abc.context import Context
+from trpc_sdk.log import logger
+from trpc_sdk.abc import TrpcContext
 
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill, TextPart, Part, TaskState
 from a2a.server.events import EventQueue
@@ -41,7 +43,7 @@ class ErrorAgentService(TrpcA2AService):
             ],
         )
 
-    async def execute(self, context: Context, event_queue: EventQueue) -> None:
+    async def execute(self, context: TrpcContext, event_queue: EventQueue) -> None:
         a2a_context = get_a2a_request_context(context)
 
         user_input = a2a_context.get_user_input()
@@ -76,7 +78,7 @@ class ErrorAgentService(TrpcA2AService):
                 final=True,
             )
 
-    async def cancel(self, context: Context, event_queue: EventQueue) -> None:
+    async def cancel(self, context: TrpcContext, event_queue: EventQueue) -> None:
         a2a_context = get_a2a_request_context(context)
 
         task = a2a_context.current_task

@@ -1,12 +1,14 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Example A2A agent for demonstrating task-specific push notifications in multi-turn scenarios."""
 
 import asyncio
 
-from trpc.log import logger
-from trpc.trpc_abc.context import Context
+from trpc_sdk.log import logger
+from trpc_sdk.abc import TrpcContext
 
 from a2a.types import (
     AgentCard,
@@ -71,7 +73,7 @@ class TaskPushNotifyAgentService(TrpcA2AService):
         logger.debug(f"[TaskPushNotifyAgent] Returning agent card: {agent_card.name} v{agent_card.version}")
         return agent_card
 
-    async def execute(self, context: Context, event_queue: EventQueue) -> None:
+    async def execute(self, context: TrpcContext, event_queue: EventQueue) -> None:
         """Execute the agent's multi-turn logic with task-specific push notifications."""
         logger.info("[TaskPushNotifyAgent] Starting execute method")
 
@@ -146,7 +148,7 @@ class TaskPushNotifyAgentService(TrpcA2AService):
                     final=True,
                 )
 
-    async def cancel(self, context: Context, event_queue: EventQueue) -> None:
+    async def cancel(self, context: TrpcContext, event_queue: EventQueue) -> None:
         """Cancel an ongoing task."""
         logger.info("[TaskPushNotifyAgent] Cancel method called")
 

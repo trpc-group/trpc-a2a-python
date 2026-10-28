@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 
 import json
 from typing import Optional
@@ -9,10 +11,10 @@ from typing_extensions import override
 from a2a.types import PushNotificationConfig
 from a2a.server.tasks import PushNotificationConfigStore
 
-from trpc.log import logger
-from trpc.trpc_abc.context import Context
-from trpc_redis.client import Client as RedisClient
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.log import logger
 from .redis_conf import RedisConf
+from .redis_conf import new_redis_client
 
 
 class RedisPushNotificationConfigStore(PushNotificationConfigStore):
@@ -33,7 +35,7 @@ class RedisPushNotificationConfigStore(PushNotificationConfigStore):
         self.key_prefix = redis_config.notification_key_prefix
         self._redis_name = redis_config.redis_name
         self._ttl = redis_config.ttl
-        self._redis = RedisClient(name=self._redis_name)
+        self._redis = new_redis_client(self._redis_name)
 
     @override
     async def set_info(self, task_id: str, notification_config: PushNotificationConfig) -> None:
@@ -42,7 +44,7 @@ class RedisPushNotificationConfigStore(PushNotificationConfigStore):
             key = f"{self.key_prefix}{task_id}"
 
             # Get existing configurations
-            ctx = Context()
+            ctx = TrpcContext()
             existing_data = await self._redis.get(ctx, key)
             configurations = []
 
@@ -79,7 +81,7 @@ class RedisPushNotificationConfigStore(PushNotificationConfigStore):
         try:
             key = f"{self.key_prefix}{task_id}"
 
-            ctx = Context()
+            ctx = TrpcContext()
             config_data = await self._redis.get(ctx, key)
             if not config_data:
                 return []
@@ -109,7 +111,7 @@ class RedisPushNotificationConfigStore(PushNotificationConfigStore):
                 config_id = task_id
 
             # Get existing configurations
-            ctx = Context()
+            ctx = TrpcContext()
             existing_data = await self._redis.get(ctx, key)
             if not existing_data:
                 return

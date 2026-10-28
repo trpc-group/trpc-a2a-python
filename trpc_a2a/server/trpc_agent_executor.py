@@ -1,13 +1,15 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Agent executor implementation for tRPC-A2A integration."""
 
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 
-from trpc.log import logger
+from trpc_sdk.log import logger
 
 from .a2a_service import TrpcA2AService
 from .utils import get_trpc_context_from_request_context
@@ -33,7 +35,7 @@ class TrpcA2AAgentExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute the agent's logic using tRPC context.
 
-        This method extracts the tRPC Context from RequestContext
+        This method extracts the tRPC TrpcContext from RequestContext
         and delegates to the service's execute method.
 
         Args:
@@ -54,7 +56,7 @@ class TrpcA2AAgentExecutor(AgentExecutor):
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Cancel a task using tRPC context.
 
-        This method extracts the tRPC Context from RequestContext
+        This method extracts the tRPC TrpcContext from RequestContext
         and delegates to the service's cancel method.
 
         Args:

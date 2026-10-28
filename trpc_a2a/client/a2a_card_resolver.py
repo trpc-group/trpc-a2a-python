@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """A2A card resolver implementation."""
 
 import json
@@ -9,9 +11,9 @@ from urllib.parse import urljoin
 
 from pydantic import BaseModel
 
-from trpc.http.client import Client
-from trpc.trpc_abc.context import Context
-from trpc.log import logger
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.http import Client
+from trpc_sdk.log import logger
 
 from a2a.types import AgentCard
 from a2a.client.errors import (
@@ -59,7 +61,7 @@ class TrpcA2ACardResolver:
         self.cli = Client("trpc-a2a-default-discovery")
 
     async def get_from_agent_url(self,
-                                 ctx: Context,
+                                 ctx: TrpcContext,
                                  agent_url: str,
                                  agent_card_path: str = "/.well-known/agent-card.json",
                                  options=None) -> ResolverResult:
@@ -91,10 +93,9 @@ class TrpcA2ACardResolver:
                 options = []
 
             # Make the HTTP GET request
-            rsp = await self.cli.get(ctx, full_url, options=options)
-
-            # Get the response body as JSON
-            rsp_json = await rsp.json()
+            async with self.cli.get(ctx, full_url, options=options) as rsp:
+                # Get the response body as JSON
+                rsp_json = await rsp.json()
             logger.debug(f"Agent card response: {rsp_json}")
 
             # Parse and validate the agent card
@@ -112,7 +113,7 @@ class TrpcA2ACardResolver:
             raise A2AClientHTTPError(500, str(e)) from e
 
     async def get_from_agent_service(self,
-                                     ctx: Context,
+                                     ctx: TrpcContext,
                                      agent_service_name: str,
                                      agent_card_path: str = "/.well-known/agent-card.json",
                                      options=None) -> ResolverResult:
@@ -146,10 +147,9 @@ class TrpcA2ACardResolver:
             if options is None:
                 options = []
             # Make the HTTP GET request
-            rsp = await cli.get(ctx, full_url, options=options)
-
-            # Get the response body as JSON
-            rsp_json = await rsp.json()
+            async with cli.get(ctx, full_url, options=options) as rsp:
+                # Get the response body as JSON
+                rsp_json = await rsp.json()
             logger.debug(f"Agent card response: {rsp_json}")
 
             # Parse and validate the agent card

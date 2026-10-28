@@ -1,10 +1,16 @@
-# -*- coding: utf-8 -*-
+# Tencent is pleased to support the open source community by making tRPC-A2A-Python available.
 #
-# Copyright @ 2025 Tencent.com
+# Copyright (C) 2026 Tencent. All rights reserved.
+#
+# tRPC-A2A-Python is licensed under Apache-2.0.
 """Service registry for tRPC-A2A services."""
 import asyncio
 import json
+import os
+from typing import Any
+from typing import Coroutine
 from typing import Dict
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi import Response
@@ -13,17 +19,19 @@ from starlette.responses import JSONResponse
 
 from a2a.types import A2ARequest
 
-from trpc.plugin import PluginInitPos
-from trpc.plugin import PluginType
-from trpc.plugin import register_plugin
-from trpc.context import TrpcContext
-from trpc.log import logger
-from trpc.codec.message import get_message
-from trpc.config import config as trpc_config
-from trpc.exceptions import ErrorCode
-from trpc.exceptions import NewFrameError
-from trpc.exceptions import TRPCBaseError
-from trpc.exceptions import ErrorType
+from trpc_sdk.abc import PluginInitPos
+from trpc_sdk.abc import PluginType
+from trpc_sdk.abc import TrpcContext
+from trpc_sdk.abc import get_message
+from trpc_sdk.config import ServerService
+from trpc_sdk.config import TrpcConfig
+from trpc_sdk.config import default_worker_num
+from trpc_sdk.exceptions import TrpcErrorCode
+from trpc_sdk.exceptions import TrpcErrorType
+from trpc_sdk.exceptions import TrpcException
+from trpc_sdk.exceptions import create_frame_error
+from trpc_sdk.log import logger
+from trpc_sdk.plugin import register_plugin
 from trpc_fastapi import register_fastapi_app
 
 from trpc_fastapi import register_before_process_request_callback
@@ -31,35 +39,43 @@ from trpc_fastapi import register_after_process_response_callback
 from trpc_fastapi import register_protocol_to_fastapi
 from trpc_fastapi import get_protocol_name
 
-from ..common import PLUGIN_NAME, PROTOCOL_NAME
+from ..common import PLUGIN_NAME
+from ..common import PROTOCOL_NAME
+from ..common import VERSION
 
 from .a2a_registry import A2AServiceRegistry
 from .trpc_fastapi_app import TrpcFastAPIApp
 from .redis_conf import get_redis_conf_by_name
 from .a2a_service import TrpcA2AService
 
-_a2a_services: Dict[str, trpc_config.Service] = {}
+_MULTI_PROCESS_MODE = "multi_process"
+
+_a2a_services: Dict[str, ServerService] = {}
+_built_pid: Optional[int] = None
 
 
-def get_a2a_services() -> list[str]:
-    """Get all A2A services."""
+def get_a2a_services() -> Dict[str, ServerService]:
+    """Get all A2A services found by the last ``find_a2a_services`` call."""
     return _a2a_services
+
 
 register_protocol_to_fastapi(PROTOCOL_NAME)
 
 
-def find_a2a_services() -> Dict[str, trpc_config.Service]:
-    """Find all A2A services."""
-    global _a2a_services
-    for service in trpc_config.global_config_obj.server.service:
+def find_a2a_services() -> Dict[str, ServerService]:
+    """Collect every server service whose protocol is ``a2a``.
+
+    Returns:
+        Service configs keyed by service name.
+    """
+    for service in TrpcConfig.server_config().service:
         if service.protocol == PROTOCOL_NAME:
             _a2a_services[service.name] = service
     return _a2a_services
 
 
-async def create_a2a_app(a2a_service: TrpcA2AService, service_config: trpc_config.Service) -> FastAPI:
+async def create_a2a_app(a2a_service: TrpcA2AService, service_config: ServerService) -> FastAPI:
     """Create a A2A app."""
-    # Get distributed configuration from service adapter options
     return await TrpcFastAPIApp.create_app(
         service=a2a_service,
         service_config=service_config,
@@ -67,18 +83,70 @@ async def create_a2a_app(a2a_service: TrpcA2AService, service_config: trpc_confi
     )
 
 
-@register_plugin(PluginType.USER_DEFINED, PLUGIN_NAME, init_pos=PluginInitPos.WORKER)
-def setup_a2a_agent():
-    """Initialize and register the AgUiAgent plugin.
+def _run_blocking(coro: Coroutine[Any, Any, Any]) -> Any:
+    """Run ``coro`` to completion on a private event loop.
+
+    The loop is never installed with ``set_event_loop``, so the loop the SDK
+    set for this thread is left untouched.
+
+    Args:
+        coro: Coroutine to run.
+
+    Returns:
+        The coroutine's result.
     """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _serving_process_num() -> int:
+    """Return how many processes serve each address under the configured process model."""
+    model = TrpcConfig.global_config().processmodel
+    if model is None or model.mode != _MULTI_PROCESS_MODE:
+        return 1
+    return model.handle_num if model.handle_num > 0 else default_worker_num()
+
+
+def _warn_if_task_state_not_shared(services: Dict[str, ServerService]) -> None:
+    """Warn when several processes serve an A2A service backed by in-memory stores.
+
+    Args:
+        services: A2A service configs keyed by service name.
+    """
+    process_num = _serving_process_num()
+    if process_num <= 1:
+        return
+    for service_name in services:
+        if get_redis_conf_by_name(service_name).redis_name:
+            continue
+        logger.warning(f"[A2A] Service '{service_name}' is served by {process_num} processes without "
+                       f"'redis_name'; tasks are kept in process memory, so tasks/get and tasks/cancel "
+                       f"may reach a process that does not know the task. Configure redis_name to share them.")
+
+
+@register_plugin(PluginType.USER_DEFINED, PLUGIN_NAME, init_pos=PluginInitPos.WORKER, version=VERSION, report=True)
+def setup_a2a_agent():
+    """Build and register the FastAPI app of every configured A2A service.
+
+    Runs once per serving process, before the fastapi starter binds any address.
+    """
+    global _built_pid
+    if _built_pid == os.getpid():
+        return
+    _built_pid = os.getpid()
+
     a2a_services_configs = find_a2a_services()
+    _warn_if_task_state_not_shared(a2a_services_configs)
     for service_name, service_config in a2a_services_configs.items():
         a2a_service = A2AServiceRegistry.get(service_name)
         if not a2a_service:
             logger.warning(f"A2A service '{service_name}' not registered. "
-                         f"Please use register_service('{service_name}', service_instance) before starting server.")
+                           f"Please use register_service('{service_name}', service_instance) before starting server.")
             continue
-        app = asyncio.get_event_loop().run_until_complete(create_a2a_app(a2a_service, service_config))
+        app = _run_blocking(create_a2a_app(a2a_service, service_config))
         register_fastapi_app(service_config.name, app)
 
 
@@ -123,7 +191,7 @@ def _create_error_response(error: Exception) -> Response:
     error_response = {
         "jsonrpc": "2.0",
         "error": {
-            "code": ErrorCode.TRPC_SERVER_SYSTEM_ERR,
+            "code": TrpcErrorCode.TRPC_SERVER_SYSTEM_ERR,
             "message": str(error)
         },  # Internal error
         "id": None,
@@ -134,7 +202,7 @@ def _create_error_response(error: Exception) -> Response:
                     media_type="application/json")
 
 
-async def _handle_after_process_response(ctx: TrpcContext, response: Response) -> None:
+async def _handle_after_process_response(ctx: TrpcContext, response: Response) -> Optional[Response]:
     """Handle after response.
 
     Args:
@@ -143,8 +211,8 @@ async def _handle_after_process_response(ctx: TrpcContext, response: Response) -
     """
     protocol_name = get_protocol_name(ctx)
     if protocol_name != PROTOCOL_NAME:
-        return
-    message = ctx.get_client_message()
+        return None
+    message = get_message(ctx)
     if response is None:
         # occurred error when processing user request
         return _create_error_response(message.server_rsp_err)
@@ -159,14 +227,15 @@ async def _handle_after_process_response(ctx: TrpcContext, response: Response) -
             response_data = json.loads(response_content)
             if "error" in response_data:
                 error = response_data["error"]
-                error_code = error.get("code", ErrorCode.TRPC_INVOKE_UNKNOWN_ERR)
+                error_code = error.get("code", TrpcErrorCode.TRPC_INVOKE_UNKNOWN_ERR)
                 error_message = error.get("message", "Unknown error")
-                err = NewFrameError(error_code, error_message)
-                logger.debug(f"[A2A] Converting JSONResponse error to TRPCBaseError: {err}")
+                err = create_frame_error(error_code, error_message)
+                logger.debug(f"[A2A] Converting JSONResponse error to TrpcException: {err}")
                 message.set_server_rsp_err(err)
         except json.JSONDecodeError:
             # If we can't parse the response, create a generic error
-            err = TRPCBaseError(ErrorType.Framework, ErrorCode.TRPC_SERVER_SYSTEM_ERR, "Failed to parse error response")
+            err = TrpcException(TrpcErrorType.FRAMEWORK, TrpcErrorCode.TRPC_SERVER_SYSTEM_ERR,
+                                "Failed to parse error response")
             logger.error("[A2A] Failed to parse JSONResponse error content")
             message.set_server_rsp_err(err)
     return response
